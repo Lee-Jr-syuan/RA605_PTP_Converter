@@ -1,0 +1,431 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>RA605 JSON → HRSS Converter</title>
+  <style>
+    :root {
+      --bg: #050505;
+      --panel: #111111;
+      --panel-2: #181818;
+      --text: #f5f5f5;
+      --muted: #a3a3a3;
+      --line: #3a3a3a;
+      --primary: #f5c542;      /* gold highlight */
+      --primary-dark: #d9aa22;
+      --danger: #f5c542;       /* warning highlight */
+      --ok: #22c55e;           /* green success */
+      --code: #000000;
+      --field: #0a0a0a;
+      --field-text: #ffffff;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans TC", sans-serif;
+    }
+    header {
+      padding: 22px 28px;
+      border-bottom: 1px solid var(--line);
+      background: #000000;
+    }
+    header h1 { margin: 0 0 6px; font-size: 24px; }
+    header p { margin: 0; color: var(--muted); }
+    main {
+      display: grid;
+      grid-template-columns: 360px 1fr;
+      gap: 18px;
+      padding: 18px;
+      height: calc(100vh - 96px);
+    }
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      box-shadow: 0 12px 30px rgba(0, 0, 0, 0.35);
+    }
+    .controls { padding: 18px; overflow: auto; }
+    .preview { display: flex; flex-direction: column; min-width: 0; }
+    .section-title {
+      font-size: 14px;
+      font-weight: 700;
+      margin: 0 0 10px;
+      color: #f5f5f5;
+    }
+    .dropzone {
+      border: 2px dashed #555555;
+      background: var(--field);
+      border-radius: 14px;
+      padding: 22px;
+      text-align: center;
+      margin-bottom: 14px;
+    }
+    .dropzone strong { display: block; margin-bottom: 6px; }
+    .dropzone span { color: var(--muted); font-size: 13px; }
+    input[type="file"] { display: none; }
+    .btn {
+      appearance: none;
+      border: 0;
+      border-radius: 12px;
+      padding: 11px 14px;
+      font-weight: 700;
+      cursor: pointer;
+      background: #2a2a2a;
+      color: var(--text);
+      transition: transform 0.05s ease, background 0.15s ease;
+      width: 100%;
+      margin: 6px 0;
+    }
+    .btn:hover { background: #3a3a3a; }
+    .btn:active { transform: translateY(1px); }
+    .btn.primary { background: var(--primary); color: #000000; }
+    .btn.primary:hover { background: var(--primary-dark); }
+    .btn:disabled { opacity: .45; cursor: not-allowed; }
+    .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    label { display: block; font-size: 12px; font-weight: 700; color: #f5f5f5; margin: 12px 0 6px; }
+    input[type="text"], input[type="number"] {
+      width: 100%;
+      padding: 10px 11px;
+      border-radius: 10px;
+      border: 1px solid var(--line);
+      background: var(--field);
+      color: var(--field-text);
+      font-size: 14px;
+    }
+    input::placeholder { color: #7a7a7a; }
+    .checkrow { display: flex; align-items: center; gap: 8px; margin-top: 12px; color: #f5f5f5; font-size: 14px; }
+    .meta {
+      padding: 12px;
+      background: var(--panel-2);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.55;
+      margin-top: 14px;
+      white-space: pre-wrap;
+    }
+    .preview-toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--line);
+    }
+    .status { color: var(--muted); font-size: 13px; }
+    textarea {
+      flex: 1;
+      width: 100%;
+      resize: none;
+      border: 0;
+      outline: none;
+      padding: 18px;
+      background: var(--code);
+      color: #ffffff;
+      font-family: Consolas, Monaco, "Courier New", monospace;
+      font-size: 13px;
+      line-height: 1.55;
+      border-radius: 0 0 16px 16px;
+    }
+    .warnings {
+      max-height: 120px;
+      overflow: auto;
+      padding: 12px 16px;
+      border-top: 1px solid var(--line);
+      background: #1a1a1a;
+      color: var(--primary);
+      font-size: 13px;
+      display: none;
+    }
+    @media (max-width: 900px) {
+      main { grid-template-columns: 1fr; height: auto; }
+      .preview { height: 70vh; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>RA605 JSON → HRSS Converter</h1>
+    <p>Import Blender motion.json，預覽 HRSS，Export .hrss .txt 到 教導器。</p>
+  </header>
+
+  <main>
+    <section class="card controls">
+      <h2 class="section-title">1. Import JSON</h2>
+      <div id="dropzone" class="dropzone">
+        <strong>拖曳 motion.json 到這裡</strong>
+        <span>或按下 Import JSON 按鈕</span>
+      </div>
+      <input id="fileInput" type="file" accept=".json,application/json" />
+      <button class="btn primary" id="importBtn">Import JSON</button>
+
+      <h2 class="section-title" style="margin-top:22px;">2. Export Settings</h2>
+      <label for="programName">Program Name</label>
+      <input id="programName" type="text" value="Move_V01" />
+
+      <div class="grid2">
+        <div>
+          <label for="safeSpeed">Safe Speed %</label>
+          <input id="safeSpeed" type="number" min="1" max="100" placeholder="原始值" />
+        </div>
+        <div>
+          <label for="safeAcc">Safe Acc %</label>
+          <input id="safeAcc" type="number" min="1" max="100" placeholder="原始值" />
+        </div>
+      </div>
+
+      <div class="grid2">
+        <div>
+          <label for="dupTol">Duplicate Tol</label>
+          <input id="dupTol" type="number" step="0.0001" value="0.001" />
+        </div>
+        <div>
+          <label for="exportName">File Name</label>
+          <input id="exportName" type="text" value="Move_V01.hrss" />
+        </div>
+      </div>
+
+      <div class="checkrow">
+        <input id="includeHome" type="checkbox" />
+        <span>加入 HOME alias</span>
+      </div>
+      <div class="checkrow">
+        <input id="strictLimits" type="checkbox" />
+        <span>嚴格檢查 RA605 軸限制</span>
+      </div>
+
+      <h2 class="section-title" style="margin-top:22px;">3. Preview / Export</h2>
+      <button class="btn" id="previewBtn" disabled>Preview HRSS</button>
+      <button class="btn primary" id="exportBtn" disabled>Export HRSS</button>
+      <button class="btn" id="exportTxtBtn" disabled>Export TXT</button>
+
+      <div id="meta" class="meta">尚未載入 JSON。</div>
+    </section>
+
+    <section class="card preview">
+      <div class="preview-toolbar">
+        <strong>HRSS Preview</strong>
+        <span id="status" class="status">No file imported</span>
+      </div>
+      <textarea id="preview" spellcheck="false" placeholder="HRSS 內容會顯示在這裡，可手動微調後再 Export HRSS / TXT。"></textarea>
+      <div id="warnings" class="warnings"></div>
+    </section>
+  </main>
+
+  <script>
+    const JOINT_LIMITS = [
+      [-165, 165], [-125, 85], [-55, 185], [-190, 190], [-115, 115], [-360, 360]
+    ];
+    let motionData = null;
+    let sourceFileName = "";
+
+    const $ = (id) => document.getElementById(id);
+
+    function cleanProgramName(name) {
+      name = (name || "Move_V01").replace(/\.[^/.]+$/, "").replace(/[^A-Za-z0-9_]/g, "_");
+      if (!name) name = "Move_V01";
+      if (/^[0-9]/.test(name)) name = "P_" + name;
+      return name.slice(0, 32);
+    }
+
+    function fmt(value, digits = 4) {
+      let v = Number(value);
+      if (!Number.isFinite(v) || Math.abs(v) < 1e-8) v = 0;
+      let s = v.toFixed(digits).replace(/0+$/, "").replace(/\.$/, "");
+      return (s === "-0" || s === "") ? "0" : s;
+    }
+
+    function pct(value, fallback) {
+      let v = Number(value);
+      if (!Number.isFinite(v)) v = fallback;
+      return Math.max(1, Math.min(100, Math.round(v)));
+    }
+
+    function sameJoints(a, b, tol) {
+      return a.length >= 6 && b.length >= 6 && a.slice(0, 6).every((x, i) => Math.abs(Number(x) - Number(b[i])) <= tol);
+    }
+
+    function validateJoints(joints, strict, warnings, label) {
+      for (let i = 0; i < 6; i++) {
+        const [lo, hi] = JOINT_LIMITS[i];
+        const a = Number(joints[i]);
+        if (a < lo || a > hi) {
+          const msg = `${label}: A${i + 1}=${fmt(a)} out of RA605 limit [${fmt(lo)}, ${fmt(hi)}]`;
+          if (strict) throw new Error(msg);
+          warnings.push(msg);
+        }
+      }
+    }
+
+    function extractAxisPoints(data) {
+      const frames = Array.isArray(data.frames) ? data.frames : [];
+      const duplicateTol = Number($("dupTol").value || 0.001);
+      const strict = $("strictLimits").checked;
+      const safeSpeed = $("safeSpeed").value.trim();
+      const safeAcc = $("safeAcc").value.trim();
+      const warnings = [];
+      const points = [];
+      let last = null;
+
+      frames.forEach((rec, index) => {
+        if (!rec || typeof rec !== "object") {
+          warnings.push(`frame #${index + 1}: skipped; not an object`);
+          return;
+        }
+        const ctrl = String(rec.ctrl_mode || "JOINT").toUpperCase();
+        if (ctrl !== "JOINT") {
+          warnings.push(`frame #${index + 1}: skipped ctrl_mode=${ctrl}; first version supports JOINT only`);
+          return;
+        }
+        if (!Array.isArray(rec.joints_deg) || rec.joints_deg.length < 6) {
+          warnings.push(`frame #${index + 1}: skipped; joints_deg missing or incomplete`);
+          return;
+        }
+        const joints = rec.joints_deg.slice(0, 6).map(Number);
+        validateJoints(joints, strict, warnings, `frame #${index + 1}`);
+        if (last && sameJoints(joints, last, duplicateTol)) return;
+
+        let motion = String(rec.motion_type || "PTP").toUpperCase();
+        if (motion !== "PTP") {
+          warnings.push(`frame #${index + 1}: E6AXIS export uses PTP; source motion_type=${motion} converted to PTP`);
+          motion = "PTP";
+        }
+        points.push({
+          name: `P${String(points.length + 1).padStart(4, "0")}`,
+          joints,
+          frame: rec.frame,
+          time_sec: rec.time_sec,
+          speed_pct: safeSpeed === "" ? pct(rec.speed_pct, 10) : pct(safeSpeed, 10),
+          acc_pct: safeAcc === "" ? pct(rec.acc_pct, 10) : pct(safeAcc, 10),
+          blend_mm: Math.max(0, Number(rec.blend_mm || 0)),
+          tool_id: Math.max(0, Math.round(Number(rec.tool_id || 0))),
+          base_id: Math.max(0, Math.round(Number(rec.base_id || 0))),
+          dwell_sec: Math.max(0, Number(rec.dwell_sec || 0))
+        });
+        last = joints;
+      });
+      if (!points.length) throw new Error("No valid JOINT frames found in JSON");
+      return { points, warnings };
+    }
+
+    function renderHrss(data, points) {
+      const lines = [];
+
+      if ($("includeHome").checked && points[0]) {
+        const j = points[0].joints;
+        lines.push(`E6AXIS HOME={A1 ${fmt(j[0])},A2 ${fmt(j[1])},A3 ${fmt(j[2])},A4 ${fmt(j[3])},A5 ${fmt(j[4])},A6 ${fmt(j[5])}}`);
+      }
+
+      points.forEach((p) => {
+        const j = p.joints;
+        lines.push(`E6AXIS ${p.name}={A1 ${fmt(j[0])},A2 ${fmt(j[1])},A3 ${fmt(j[2])},A4 ${fmt(j[3])},A5 ${fmt(j[4])},A6 ${fmt(j[5])}}`);
+      });
+
+      lines.push("");
+      points.forEach((p) => {
+        const cont = "1%";
+        lines.push(`PTP ${p.name} CONT=${cont} Vel=${p.speed_pct}% Acc=${p.acc_pct}% TOOL[${p.tool_id}] BASE[${p.base_id}]`);
+        if (p.dwell_sec > 0) lines.push(`WAIT SEC ${fmt(p.dwell_sec)}`);
+      });
+      return lines.join("\n") + "\n";
+    }
+
+    function updatePreview() {
+      if (!motionData) return;
+      try {
+        const { points, warnings } = extractAxisPoints(motionData);
+        const text = renderHrss(motionData, points);
+        $("preview").value = text;
+        $("status").textContent = `${points.length} points ready`;
+        $("exportBtn").disabled = false;
+        $("exportTxtBtn").disabled = false;
+        $("meta").textContent = `來源：${sourceFileName}\nRobot：${motionData.robot || "unknown"}\nFrame count：${motionData.frame_count || (motionData.frames || []).length}\n有效輸出點位：${points.length}\nWarnings：${warnings.length}`;
+        if (warnings.length) {
+          $("warnings").style.display = "block";
+          $("warnings").textContent = warnings.slice(0, 120).map(w => "- " + w).join("\n") + (warnings.length > 120 ? `\n... 還有 ${warnings.length - 120} 筆` : "");
+        } else {
+          $("warnings").style.display = "none";
+          $("warnings").textContent = "";
+        }
+      } catch (err) {
+        $("status").textContent = "Preview failed";
+        $("warnings").style.display = "block";
+        $("warnings").textContent = String(err.message || err);
+        $("exportBtn").disabled = true;
+        $("exportTxtBtn").disabled = true;
+      }
+    }
+
+    async function loadFile(file) {
+      if (!file) return;
+      sourceFileName = file.name;
+      const text = await file.text();
+      motionData = JSON.parse(text);
+      const base = cleanProgramName(file.name.replace(/\.json$/i, "") === "motion" ? "Move_V01" : file.name);
+      $("programName").value = base;
+      $("exportName").value = `${base}.hrss`;
+      $("previewBtn").disabled = false;
+      updatePreview();
+    }
+
+    function downloadHrss() {
+      const text = $("preview").value;
+      if (!text.trim()) return;
+      let name = ($("exportName").value || "Move_V01.hrss").trim();
+      if (!/\.hrss$/i.test(name)) name += ".hrss";
+      const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = name;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      $("status").textContent = `Exported ${name}`;
+    }
+
+
+    function downloadTxt() {
+      const text = $("preview").value;
+      if (!text.trim()) return;
+      let name = ($("exportName").value || "Move_V01.hrss").trim();
+      name = name.replace(/\.hrss$/i, "").replace(/\.txt$/i, "");
+      if (!name) name = "Move_V01";
+      name += ".txt";
+      const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = name;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      $("status").textContent = `Exported ${name}`;
+    }
+
+    $("importBtn").addEventListener("click", () => $("fileInput").click());
+    $("fileInput").addEventListener("change", (e) => loadFile(e.target.files[0]));
+    $("previewBtn").addEventListener("click", updatePreview);
+    $("exportBtn").addEventListener("click", downloadHrss);
+    $("exportTxtBtn").addEventListener("click", downloadTxt);
+    ["programName", "safeSpeed", "safeAcc", "dupTol", "includeHome", "strictLimits"].forEach(id => {
+      $(id).addEventListener("input", () => { if (motionData) updatePreview(); });
+      $(id).addEventListener("change", () => { if (motionData) updatePreview(); });
+    });
+
+    const dz = $("dropzone");
+    dz.addEventListener("dragover", (e) => { e.preventDefault(); dz.style.background = "#1f1f1f"; });
+    dz.addEventListener("dragleave", () => { dz.style.background = "var(--field)"; });
+    dz.addEventListener("drop", (e) => {
+      e.preventDefault();
+      dz.style.background = "var(--field)";
+      loadFile(e.dataTransfer.files[0]);
+    });
+  </script>
+</body>
+</html>
