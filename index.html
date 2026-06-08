@@ -149,7 +149,7 @@
 <body>
   <header>
     <h1>RA605 JSON → HRSS Converter</h1>
-    <p>Import Blender motion.json，預覽 HRSS，Export .hrss .txt 到 教導器。</p>
+    <p>Import Blender motion.json，預覽 HRSS，Export 極簡 .hrss 到 USB / 教導器。</p>
   </header>
 
   <main>
@@ -195,6 +195,10 @@
       <div class="checkrow">
         <input id="strictLimits" type="checkbox" />
         <span>嚴格檢查 RA605 軸限制</span>
+      </div>
+      <div class="checkrow highlight">
+        <input id="infiniteLoop" type="checkbox" />
+        <span>Infinite LOOP：將動作指令包成無限迴圈</span>
       </div>
 
       <h2 class="section-title" style="margin-top:22px;">3. Preview / Export</h2>
@@ -325,11 +329,17 @@
       });
 
       lines.push("");
+      if ($("infiniteLoop").checked) {
+        lines.push("LOOP");
+      }
       points.forEach((p) => {
         const cont = "1%";
         lines.push(`PTP ${p.name} CONT=${cont} Vel=${p.speed_pct}% Acc=${p.acc_pct}% TOOL[${p.tool_id}] BASE[${p.base_id}]`);
         if (p.dwell_sec > 0) lines.push(`WAIT SEC ${fmt(p.dwell_sec)}`);
       });
+      if ($("infiniteLoop").checked) {
+        lines.push("ENDLOOP");
+      }
       return lines.join("\n") + "\n";
     }
 
@@ -342,7 +352,7 @@
         $("status").textContent = `${points.length} points ready`;
         $("exportBtn").disabled = false;
         $("exportTxtBtn").disabled = false;
-        $("meta").textContent = `來源：${sourceFileName}\nRobot：${motionData.robot || "unknown"}\nFrame count：${motionData.frame_count || (motionData.frames || []).length}\n有效輸出點位：${points.length}\nWarnings：${warnings.length}`;
+        $("meta").textContent = `來源：${sourceFileName}\nRobot：${motionData.robot || "unknown"}\nFrame count：${motionData.frame_count || (motionData.frames || []).length}\n有效輸出點位：${points.length}\nInfinite LOOP：${$("infiniteLoop").checked ? "ON" : "OFF"}\nWarnings：${warnings.length}`;
         if (warnings.length) {
           $("warnings").style.display = "block";
           $("warnings").textContent = warnings.slice(0, 120).map(w => "- " + w).join("\n") + (warnings.length > 120 ? `\n... 還有 ${warnings.length - 120} 筆` : "");
@@ -413,7 +423,7 @@
     $("previewBtn").addEventListener("click", updatePreview);
     $("exportBtn").addEventListener("click", downloadHrss);
     $("exportTxtBtn").addEventListener("click", downloadTxt);
-    ["programName", "safeSpeed", "safeAcc", "dupTol", "includeHome", "strictLimits"].forEach(id => {
+    ["programName", "safeSpeed", "safeAcc", "dupTol", "includeHome", "strictLimits", "infiniteLoop"].forEach(id => {
       $(id).addEventListener("input", () => { if (motionData) updatePreview(); });
       $(id).addEventListener("change", () => { if (motionData) updatePreview(); });
     });
