@@ -149,7 +149,7 @@
 <body>
   <header>
     <h1>RA605 JSON → HRSS Converter</h1>
-    <p>Import Blender motion.json，預覽 HRSS，Export 極簡 .hrss 到 USB / 教導器。</p>
+    <p>Import Blender motion.json，預覽 HRSS，依 keyframe 時間差自動計算 Vel%，Export 極簡 .hrss 到 USB / 教導器。</p>
   </header>
 
   <main>
@@ -168,12 +168,39 @@
 
       <div class="grid2">
         <div>
-          <label for="safeSpeed">Safe Speed %</label>
-          <input id="safeSpeed" type="number" min="1" max="100" placeholder="原始值" />
+          <label for="safeSpeed">Manual Speed %</label>
+          <input id="safeSpeed" type="number" min="1" max="100" placeholder="原始值 / Auto 時可留空" />
         </div>
         <div>
           <label for="safeAcc">Safe Acc %</label>
           <input id="safeAcc" type="number" min="1" max="100" placeholder="原始值" />
+        </div>
+      </div>
+
+      <div class="checkrow highlight">
+        <input id="autoSpeed" type="checkbox" checked />
+        <span>Auto Speed：依相鄰 keyframe 時間差計算 Vel%</span>
+      </div>
+
+      <div class="grid2">
+        <div>
+          <label for="maxJointSpeed">100% Joint Speed deg/s</label>
+          <input id="maxJointSpeed" type="number" min="1" step="1" value="120" />
+        </div>
+        <div>
+          <label for="minAutoSpeed">Min Auto Speed %</label>
+          <input id="minAutoSpeed" type="number" min="1" max="100" value="1" />
+        </div>
+      </div>
+
+      <div class="grid2">
+        <div>
+          <label for="maxAutoSpeed">Max Auto Speed %</label>
+          <input id="maxAutoSpeed" type="number" min="1" max="100" value="100" />
+        </div>
+        <div>
+          <label for="firstPointSpeed">First Point Speed %</label>
+          <input id="firstPointSpeed" type="number" min="1" max="100" value="10" />
         </div>
       </div>
 
@@ -248,6 +275,53 @@
       return Math.max(1, Math.min(100, Math.round(v)));
     }
 
+    function clampPct(value, lo, hi) {
+      const minV = pct(lo, 1);
+      const maxV = pct(hi, 100);
+      const low = Math.min(minV, maxV);
+      const high = Math.max(minV, maxV);
+      return Math.max(low, Math.min(high, Math.round(Number(value))));
+    }
+
+    function jointDistanceDeg(a, b) {
+      let maxDelta = 0;
+      for (let i = 0; i < 6; i++) {
+        maxDelta = Math.max(maxDelta, Math.abs(Number(a[i]) - Number(b[i])));
+      }
+      return maxDelta;
+    }
+
+    function assignAutoSpeeds(points, warnings) {
+      if (!$('autoSpeed').checked) return;
+      const maxJointSpeed = Math.max(1, Number($('maxJointSpeed').value || 120));
+      const minSpeed = pct($('minAutoSpeed').value, 1);
+      const maxSpeed = pct($('maxAutoSpeed').value, 100);
+      const firstSpeed = pct($('firstPointSpeed').value, 10);
+      if (!points.length) return;
+
+      points[0].speed_pct = clampPct(firstSpeed, minSpeed, maxSpeed);
+      points[0].speed_note = 'first point fallback';
+
+      for (let i = 1; i < points.length; i++) {
+        const prev = points[i - 1];
+        const cur = points[i];
+        const t0 = Number(prev.time_sec);
+        const t1 = Number(cur.time_sec);
+        const dt = t1 - t0;
+        if (!Number.isFinite(dt) || dt <= 0) {
+          cur.speed_pct = points[i - 1].speed_pct;
+          cur.speed_note = 'time missing; reused previous speed';
+          warnings.push(`${cur.name}: time_sec missing or not increasing; reused previous Vel=${cur.speed_pct}%`);
+          continue;
+        }
+        const dist = jointDistanceDeg(prev.joints, cur.joints);
+        const degPerSec = dist / dt;
+        const raw = (degPerSec / maxJointSpeed) * 100;
+        cur.speed_pct = clampPct(raw, minSpeed, maxSpeed);
+        cur.speed_note = `${fmt(dist)}deg / ${fmt(dt)}s`;
+      }
+    }
+
     function sameJoints(a, b, tol) {
       return a.length >= 6 && b.length >= 6 && a.slice(0, 6).every((x, i) => Math.abs(Number(x) - Number(b[i])) <= tol);
     }
@@ -312,6 +386,7 @@
         last = joints;
       });
       if (!points.length) throw new Error("No valid JOINT frames found in JSON");
+      assignAutoSpeeds(points, warnings);
       return { points, warnings };
     }
 
@@ -423,7 +498,7 @@
     $("previewBtn").addEventListener("click", updatePreview);
     $("exportBtn").addEventListener("click", downloadHrss);
     $("exportTxtBtn").addEventListener("click", downloadTxt);
-    ["programName", "safeSpeed", "safeAcc", "dupTol", "includeHome", "strictLimits", "infiniteLoop"].forEach(id => {
+    ["programName", "safeSpeed", "safeAcc", "dupTol", "includeHome", "strictLimits", "infiniteLoop", "autoSpeed", "maxJointSpeed", "minAutoSpeed", "maxAutoSpeed", "firstPointSpeed"].forEach(id => {
       $(id).addEventListener("input", () => { if (motionData) updatePreview(); });
       $(id).addEventListener("change", () => { if (motionData) updatePreview(); });
     });
